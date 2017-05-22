@@ -1,0 +1,36 @@
+.prev,
+.next {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 1px solid transparent;
+    transition: 1s;
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.4;
+}
+.prev-month,
+.next-month {
+    margin: 0 5px;
+    padding: 3px 5px;
+    border: #333 1px solid;
+    border-bottom: none;
+    display: inline-block;
+    /*width: 20px;*/
+    height: 20px;
+    /*border: 1px solid transparent;*/
+    transition: 1s;
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.prev:hover,
+.next:hover {
+    border: 1px solid rgb(212, 212, 212);
+    background-color: rgb(240, 240, 240);
+    border-radius: 4px;
+    -webkit-box-shadow: 2px 2px 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: 2px 2px 1px 2px rgba(0, 0, 0, 0.3);
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.2);
+}

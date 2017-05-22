@@ -1,0 +1,902 @@
+<?php
+/**
+ * @file
+ * A description of what your module does.
+ */
+module_load_include('inc', 'schedule_calendar', 'includes/schedule_calendar.block');
+module_load_include('inc', 'schedule_calendar', 'includes/schedule_calendar.func');
+
+function schedule_calendar_init() {
+
+
+  drupal_add_js('https://use.fontawesome.com/215e31c601.js');
+  //  drupal_add_js(drupal_get_path('module', 'schedule_calendar') . '/js/freshslider.1.0.0.js');
+  //  drupal_add_js(drupal_get_path('module', 'schedule_calendar') . '/js/script.js');
+  drupal_add_css(drupal_get_path('module', 'schedule_calendar') . '/css/schedule_calendar.css');
+
+
+}
+
+/**
+ * Implements hook_help().
+ */
+function schedule_calendar_menu() {
+  $items['admin/config/schedule-calendar'] = array(
+    'title' => 'Schedule Calendar',
+    //    'description' => '',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('schedule_calendar_admin_form',),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['admin/config/schedule-calendar/settings'] = array(
+    'title' => 'Schedule Calendar Settings',
+    'description' => 'Schedule calendar Settings Page',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => 0,
+  );
+  $items['admin/config/schedule-calendar/list'] = array(
+    'title' => 'Schedule Calendar List',
+    'description' => 'List Schedule Calendar items',
+    'page callback' => 'schedule_calendar_admin_list',
+    'access callback' => TRUE,
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+  );
+  $items['schedule-calendar/%/%ctools_js'] = array(
+    'title' => 'Order',
+    'page callback' => 'schedule_calendar_ajax_callback',
+    'page arguments' => array(1, 2),
+    //    'access arguments' => array('user conte'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'delivery callback' => 'ajax_deliver',
+  );
+  $items['schedule-calendar/%/%/%ctools_js'] = array(
+    'title' => 'Order',
+    'page callback' => 'schedule_calendar_page_ajax_callback',
+    'page arguments' => array(1, 2, 3),
+    //    'access arguments' => array('user conte'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'delivery callback' => 'ajax_deliver',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_entity_info
+ */
+function schedule_calendar_entity_info() {
+  return array(
+    'schedule_calendar' => array(
+      'label' => t('Schedule Calendar'),
+      'entity class' => 'Entity',
+      'controller class' => 'EntityAPIController',
+      'views controller class' => 'EntityDefaultViewsController',
+      'base table' => 'schedule_calendar',
+      'fieldable' => TRUE,
+      'entity keys' => array(
+        'id' => 'id'
+      ),
+      //    'admin ui' => array(
+      //      'path' => 'admin/config/heydesk/messenger'
+      //    ),
+      'access callback' => 'schedule_calendar_access',
+      'module' => 'schedule_calendar',
+    ),
+  );
+}
+
+function schedule_calendar_access($op, $entity, $account = NULL, $entity_type = 'schedule_calendar') {
+  return user_access(TRUE);
+}
+
+function schedule_calendar_load($id) {
+  $result = entity_load('schedule_calendar', array($id));
+  return $result ? reset($result) : FALSE;
+}
+
+
+/**
+ * Popup�s callback function for form.
+ */
+function schedule_calendar_page_ajax_callback($period, $date, $js = NULL) {
+
+  _schedule_calendar_modal();
+  $commands = array();
+  switch ($period) {
+    case 'page':
+      $calendar = '<div id="schedule-calendar-table">' . schedule_calendar_hour_render_table_calendar($date) . '</div>';
+      $paginator = '<div id="schedule-calendar-pagination">' . schedule_calendar_hour_paginator($date) . '</div>';
+
+      break;
+    case 'month':
+
+      $calendar = '<div id="schedule-calendar-table">' . schedule_calendar_months_render_table_calendar($date) . '</div>';
+      $paginator = '<div id="schedule-calendar-pagination">' . schedule_calendar_montts_paginator($date) . '</div>';
+
+      break;
+  }
+  $commands[] = ajax_command_insert('#schedule-calendar-table', $calendar);
+  $commands[] = ajax_command_insert('#schedule-calendar-pagination', $paginator);
+  return array('#type' => 'ajax', '#commands' => $commands);
+
+
+}
+
+/**
+ * Popup�s callback function for form.
+ */
+function schedule_calendar_ajax_callback($time, $js = NULL) {
+  if (!$js) {
+    // ���� JavaScript �������� � ������� ���������� ��� ������������ ����.
+    return drupal_get_form('schedule_calendar_order_form');
+  }
+
+  ctools_include('ajax');
+  ctools_include('modal');
+  // ������������� ��������� ��������� �����.
+  $form_state = array(
+    'ajax' => TRUE,
+    'time' => $time,
+  );
+  $output = ctools_modal_form_wrapper('schedule_calendar_order_form', $form_state);
+  print ajax_render($output);
+  drupal_exit();
+
+
+}
+
+/**
+ * Implements hook_form().
+ */
+function schedule_calendar_order_form($form, $form_state) {
+  //  $dateArray = _set_day_month_year_array($form_state['time']);
+  $markupHour = '<h3>' . date('H:i', $form_state['time']) . ' -  ' . date('H:i', mktime(date('H:i', $form_state['time']) + 1, 0, 0)) . ' (' . date('j F', $form_state['time']) . ')</h3>';
+  $markupDay = '<h3>' . date('j F', $form_state['time']) . '</h3>';
+  $form['time'] = array(
+    '#type' => 'markup',
+    '#markup' => date('si', $form_state['time']) == 5959 ? $markupDay : $markupHour,
+  );
+  $form['status'] = array(
+    '#type' => 'value',
+    '#value' => date('si', $form_state['time']) == 5959 ? 1 : 2,
+  );
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#requirement' => TRUE,
+  );
+  $form['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#requirement' => TRUE,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('submit'),
+    '#ajax' => array(
+      'callback' => 'schedule_calendar_order_form_submit_callback',
+    ),
+    '#submit' => array('schedule_calendar_order_form_submit'),
+  );
+  return $form;
+}
+
+function schedule_calendar_order_form_submit($form, &$form_state) {
+  $value = array(
+    'time' => $form_state['time'],
+    'name' => $form_state['values']['name'],
+    'email' => $form_state['values']['email'],
+    'status' => $form_state['values']['status'],
+  );
+  $schedule = entity_create('schedule_calendar', $value);
+  $schedule = entity_save('schedule_calendar', $schedule);
+  $form_state['schedule'] = $schedule;
+}
+
+function schedule_calendar_order_form_submit_callback($form, &$form_state) {
+  $commands = array();
+  _schedule_calendar_modal();
+  $time = date('H:i', $form_state['time']) . ' ' . t('Approved');
+  $day = date('j D', $form_state['time']) . ' ' . t('Approved');
+
+
+  if ($form_state['schedule']) {
+    $html = $form_state['values']['status'] == 2 ? $time : $day;
+    $commands[] = ajax_command_replace('#' . $form_state['time'], $html);
+
+
+    $commands[] = ctools_modal_command_dismiss();
+  }
+
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Implements hook_form().
+ */
+function schedule_calendar_admin_form($form, $form_state) {
+  $form['time_min'] = array(
+    '#title' => t('Minimal time'),
+    '#type' => 'select',
+    '#options' => array(
+      'hour' => t('Hour'),
+      'day' => t('Day')
+    ),
+    '#default_value' => variable_get('schedule_calendar_time_min', 'hour'),
+  );
+  $form['calendar_pos'] = array(
+    '#title' => t('Calendar position'),
+    '#type' => 'select',
+    '#options' => array(
+      'ver' => t('Vertical'),
+      'hor' => t('Horizontal'),
+    ),
+    '#default_value' => variable_get('schedule_calendar_calendar_pos', 'ver'),
+    '#states' => array(
+      'visible' => array(
+        ':input[name = "time_min"]' => array('value' => 'day'),
+      ),
+    ),
+  );
+  $form['time_min_count'] = array(
+    '#title' => t('Visible days'),
+    '#type' => 'select',
+    '#options' => array(
+      '0' => 1,
+      '1' => 2,
+      '2' => 3,
+      '3' => 4,
+      '4' => 5,
+      '5' => 6,
+      '6' => 7,
+    ),
+    '#default_value' => variable_get('schedule_calendar_time_min_count', ''),
+    '#states' => array(
+      'visible' => array(
+        ':input[name = "time_min"]' => array('value' => 'hour'),
+      ),
+    ),
+  );
+  $form['time_min_hours_from'] = array(
+    '#title' => t('Hour To:'),
+    '#type' => 'select',
+    '#options' => _all_hour_array(),
+    '#default_value' => variable_get('time_min_hours_from', ''),
+    '#states' => array(
+      'visible' => array(
+        ':input[name = "time_min"]' => array('value' => 'hour'),
+      ),
+    ),
+  );
+  ////  $revers_array = array_reverse(_all_hour_array());
+  //  $array =  _all_hour_array();
+  //  $revers_array = arsort($array);
+  ////  $revers_array = array_flip($revers_array);
+  ////  $revers_array =krsort(_all_hour_array());
+  //  dpm(_all_hour_array());
+  //  dpm($revers_array);
+
+  $form['time_min_hours_to'] = array(
+    '#title' => t('Hour From:'),
+    '#type' => 'select',
+    '#options' => _all_hour_array_reverse(),
+    '#default_value' => variable_get('time_min_hours_to', ''),
+    '#states' => array(
+      'visible' => array(
+        ':input[name = "time_min"]' => array('value' => 'hour'),
+      ),
+    ),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit')
+  );
+
+
+  return $form;
+
+}
+
+function schedule_calendar_admin_form_submit($form, &$form_state) {
+
+  variable_set('schedule_calendar_calendar_pos', $form_state['values']['calendar_pos']);
+  variable_set('schedule_calendar_time_min', $form_state['values']['time_min']);
+  variable_set('schedule_calendar_time_min_count', isset($form_state['values']['time_min_count']) ? $form_state['values']['time_min_count'] : '');
+  variable_set('time_min_hours_from', isset($form_state['values']['time_min_hours_from']) ? $form_state['values']['time_min_hours_from'] : '');
+  variable_set('time_min_hours_to', isset($form_state['values']['time_min_hours_to']) ? $form_state['values']['time_min_hours_to'] : '');
+
+
+}
+
+function schedule_calendar_admin_list() {
+  $header = array(
+    t('Data'),
+    t('Time'),
+    t('Name'),
+    t('Email'),
+  );
+  $rows = array();
+
+  $scheduls = entity_load('schedule_calendar');
+
+  foreach ($scheduls as $value) {
+
+    $rows[] = [
+      date('j M Y', $value->time),
+      date('H:i', $value->time),
+      $value->name,
+      $value->email
+
+    ];
+  }
+  return theme('table', array(
+    'header' => $header,
+    'rows' => $rows
+  ));
+
+
+}
+
+/**
+ * Implements hook_help().
+ */
+function schedule_calendar_hour_render_table_calendar($date = NULL) {
+
+  $now_day = (int) date('j', time());
+  $now_month = (int) date('n', time());
+  _schedule_calendar_modal();
+
+  $day_count = variable_get('schedule_calendar_time_min_count', 0);
+  $month = isset($date) ? date('n', $date) : $now_month;
+  $day = isset($date) ? date('j', $date) : $now_day;
+  $header = array();
+  $rows = array();
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'schedule_calendar');
+  $query->propertyCondition('status', 2);
+  $query->propertyCondition('time', mktime(0, 0, 0, $month, $day), '>=');
+  $query->propertyCondition('time', mktime(23, 0, 0, $month, $day + $day_count), '<=');
+  $result = $query->execute();
+  $results = array();
+  foreach ($result['schedule_calendar'] as $schedule) {
+    $results[] = $schedule->id;
+
+  }
+  $schedules = entity_load('schedule_calendar', $results);
+  $times = array();
+  foreach ($schedules as $value) {
+    $times[] = $value->time;
+  }
+
+
+  for ($i = 0; $i < $day_count + 1; $i++) {
+    $header[$i]['data'] = date('F j', mktime(0, 0, 0, $month, $day + $i));
+    for ($k = variable_get('time_min_hours_from', 0); $k <= variable_get('time_min_hours_to', 24); $k++) {
+      $time = mktime($k, 0, 0, $month, $day + $i);
+      $status = $time > time() ? 1 : 0;
+      $status = in_array($time, $times) ? 2 : $status;
+      switch ($status) {
+        case 0:
+          $date = date('H:i', $time) . ' ' . t('Disable');
+          break;
+        case 1:
+          $date = l(date('H:i', $time) . ' ' . t('Enable'), 'schedule-calendar/' . $time . '/nojs', array(
+            'attributes' => array(
+              'class' => array(
+                'use-ajax',
+                'ctools-modal-schedule-calendar-style',
+                'enable-link'
+              ),
+              'id' => $time,
+            ),
+          ));
+          break;
+        case 2:
+          $date = date('H:i', $time) . ' ' . t('Approved');
+          break;
+
+      }
+      $rows[$k]['data'][] = $date;
+
+
+    }
+  }
+
+
+  return theme('table', array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array(
+      'id' => 'table-calendar',
+      'class' => array('table-calendar')
+    )
+  ));
+
+
+}
+
+/**
+ * Implements hook_ranking().
+ */
+function schedule_calendar_text_hour_calendar($date = NULL) {
+  $output = array();
+  $date = isset($date) ? $date : time();
+  $count = variable_get('schedule_calendar_time_min_count', 0);
+  $month = date('g', $date);
+  $day = date('j', $date);
+  $output['month'] = date('M j', $date);
+  $output['nextDay'] = date('j', mktime(0, 0, 0, $month, $day + $count + 1)) . "-" . date('j', mktime(0, 0, 0, $month, $day + $count * 2));
+  $output['prevDay'] = date('j', mktime(0, 0, 0, $month, $day - $count)) . "-" . date('j', mktime(0, 0, 0, $month, $day - 1));
+  return $output;
+}
+
+function schedule_calendar_link_generator($date) {
+  $date = isset($date) ? $date : time();
+  $month = date('n', $date);
+  $next_day = date('j', $date) + variable_get('schedule_calendar_time_min_count', 0);
+  $prev_day = date('j', $date) - variable_get('schedule_calendar_time_min_count', 0);
+
+
+  $output = array();
+  $nextDay = mktime(0, 0, 0, $month, $next_day);
+  $prevDay = mktime(0, 0, 0, $month, $prev_day);
+  $prevMonth = mktime(0, 0, 0, $month - 1, 1);
+  $nextMonth = mktime(0, 0, 0, $month + 1, 1);
+  $next = '<i class="fa fa-chevron-right" aria-hidden="true"></i>';
+  $prev = '<i class="fa fa-chevron-left" aria-hidden="true"></i>';
+  $output['nextDayLink'] = l($next, 'schedule-calendar/page/' . $nextDay . '/no_js', array(
+    'attributes' => array(
+      'class' => array(
+        'use-ajax',
+      ),
+    ),
+    'html' => TRUE
+  ));
+  $prev_link = l($prev, 'schedule-calendar/page/' . $prevDay . '/no_js', array(
+    'attributes' => array(
+      'class' => array(
+        'use-ajax',
+      ),
+    ),
+    'html' => TRUE
+  ));
+  $output['prevMonthLink'] = l($prev, 'schedule-calendar/page/' . $prevMonth . '/no_js', array(
+    'attributes' => array(
+      'class' => array(
+        'use-ajax',
+      ),
+    ),
+    'html' => TRUE
+  ));
+  $output['nextMonthLink'] = l($next, 'schedule-calendar/page/' . $nextMonth . '/no_js', array(
+    'attributes' => array(
+      'class' => array(
+        'use-ajax',
+      ),
+    ),
+    'html' => TRUE
+  ));
+  $output['prevMonthLink'] = $date > time() ? $output['prevMonthLink'] : $prev;
+
+  $output['prevDayLink'] = $date > time() ? $prev_link : $prev;
+
+
+  return $output;
+}
+
+function schedule_calendar_hour_paginator($date = NULL) {
+  $date = isset($date) ? $date : time();
+
+
+  $text = schedule_calendar_text_hour_calendar($date);
+  $link = schedule_calendar_link_generator($date);
+
+  return theme('schedule_calendar_paginator', array(
+    'month' => $text['month'],
+    'nextDay' => $text['nextDay'],
+    'prevDay' => $text['prevDay'],
+    'prevDayLink' => $link['prevDayLink'],
+    'prevMonthLink' => $link['prevMonthLink'],
+    'nextMonthLink' => $link['nextMonthLink'],
+    'nextDayLink' => $link['nextDayLink'],
+    'attributes' => array(
+      'id' => 'schedule-paginator'
+    ),
+  ));
+
+
+}
+
+/**
+ * Realisation calendar
+ */
+
+
+function schedule_calendar_months_render_table_calendar($date = NULL) {
+  $date = isset($date) ? $date : time();
+  $month = date('n', $date);
+  $year = date('Y', $date);
+  $typeCalendar = variable_get('schedule_calendar_calendar_pos', 'ver');
+  $firstDayWeek = _week_day_first_day(mktime(0, 0, 0, $month, 1, $year));
+  $number = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+  $rows = array();
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'schedule_calendar');
+  $query->propertyCondition('status', 1);
+  $query->propertyCondition('time', mktime(0, 0, 0, $month, 1, $year), '>=');
+  $query->propertyCondition('time', mktime(23, 0, 0, $month, $number, $year), '<=');
+  $result = $query->execute();
+  $results = array();
+  dpm($result);
+  if ($result['schedule_calendar']) {
+    foreach ($result['schedule_calendar'] as $schedule) {
+      $results[] = $schedule->id;
+    }
+  }
+  $schedules = entity_load('schedule_calendar', $results);
+  $days = array();
+  foreach ($schedules as $value) {
+    $days[] = date('j', $value->time);
+  }
+
+  if ($typeCalendar == 'ver') {
+
+    $header = array(
+      t('Mon'),
+      t('Tue'),
+      t('Wed'),
+      t('Thu'),
+      t('Fri'),
+      t('Sat'),
+      t('Sun'),
+
+    );
+    $week = 0;
+    $k = 0;
+    $j = 1;
+
+
+    _schedule_calendar_modal();
+
+
+
+    for ($i = 1; $i <= 42; $i++) {
+      if ($k == 7) {
+        if ($j > $number) {
+          break;
+        }
+        else {
+          $week++;
+          $k = 1;
+          $class = $k;
+        }
+      }
+      else {
+        $k++;
+        $class = $k;
+      }
+
+
+      if (($week == 0) && ($k < $firstDayWeek)) {
+        $rows[$week][] = '';
+
+      }
+      elseif ($j > $number) {
+        $rows[$week][] = '';
+
+
+      }
+      else {
+        $text = date('j D', mktime(0, 0, 0, $month, $j, $year));
+
+        if (($j < date('j') && ($month == date('n'))) || ($month < date('n'))) {
+          $rows[$week][] = $text . ' ' . t('(Disabled)');
+
+        }
+        elseif (in_array($j, $days)) {
+          $rows[$week][] = $text . ' ' . t('(Approved)');
+
+
+        }
+        else {
+
+
+          $rows[$week][] = array(
+            'data' => l($text, 'schedule-calendar/' . mktime(0, 59, 59, $month, $j, $year) . '/nojs', array(
+              'attributes' => array(
+                'class' => array(
+                  'use-ajax',
+                  'ctools-modal-schedule-calendar-style',
+                  'enable-link'
+                ),
+                'id' => mktime(0, 59, 59, $month, $j, $year),
+              ),
+            )),
+            'class' => array(
+              $class,
+            ),
+          );
+        }
+
+        $j++;
+      }
+    }
+  }
+  else {
+    $weekCount = _week_count($firstDayWeek, $number);
+    //    dpm($weekCount);
+
+    $header = array();
+    for ($i = 0; $i <= $weekCount; $i++) {
+      $header[] = $i . t(' Week');
+    }
+    $weekDay = array(
+      t('Mon'),
+      t('Tue'),
+      t('Wed'),
+      t('Thu'),
+      t('Fri'),
+      t('Sat'),
+      t('Sun'),
+    );
+    $dayCount = 1;
+    for ($j = 0; $j < $weekCount; $j++) {
+      for ($k = 0; $k < 7; $k++) {
+
+        $rows[$k][-1] = $weekDay[$k];
+        if (($j == 0) && ($k + 1 < $firstDayWeek)) {
+          $rows[$k][$j] = '';
+        }
+        else {
+
+          ////////////////////////
+          if (($dayCount < date('j') && ($month == date('n'))) || ($month < date('n'))) {
+
+
+            $rows[$k][$j] = $dayCount . ' ' . t('(Disabled)');
+
+
+          }
+          elseif (in_array($j, $days)) {
+            $rows[$k][$j] = $dayCount . ' ' . t('(Approved)');
+
+
+          }
+          else {
+
+
+            $rows[$k][$j] = array(
+              'data' => l($dayCount, 'schedule-calendar/' . mktime(0, 59, 59, $month, $j, $year) . '/nojs', array(
+                'attributes' => array(
+                  'class' => array(
+                    'use-ajax',
+                    'ctools-modal-schedule-calendar-style',
+                    'enable-link'
+                  ),
+                  'id' => mktime(0, 59, 59, $month, $j, $year),
+                ),
+              )),
+              'class' => array(//              $class,
+              ),
+            );
+          }
+
+
+          //          $rows[$k][$j] = $dayCount;
+          if ($dayCount > $number) {
+            if ($k < 7) {
+              $rows[$k][$j] = '';
+            }
+            else {
+              break;
+
+
+            }
+          }
+          $dayCount++;
+        }
+      }
+    }
+  }
+  //  dpm($rows);
+
+
+  return theme('table', array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array(
+      'id' => 'table-calendar',
+      'class' => array('table-calendar')
+    )
+  ));
+
+
+}
+
+function schedule_calendar_montts_paginator($date = NULL) {
+  $date = isset($date) ? $date : time();
+  $month = date('n', $date);
+  $text = date('F', $date);
+  $year = date('Y', $date);
+  $nextMount = mktime(0, 0, 0, $month + 1, 1, $year);
+  $prevMount = mktime(0, 0, 0, $month - 1, 1, $year);
+
+  $link = array(
+    'prevMonthLink' => l(date('F', $prevMount), 'schedule-calendar/month/' . $prevMount . '/no_js', array(
+      'attributes' => array(
+        'class' => array(
+          'use-ajax',
+        ),
+      ),
+      'html' => TRUE
+    )),
+    'nextMonthLink' => l(date('F', $nextMount), 'schedule-calendar/month/' . $nextMount . '/no_js', array(
+      'attributes' => array(
+        'class' => array(
+          'use-ajax',
+        ),
+      ),
+      'html' => TRUE
+    )),
+
+  );
+
+
+  return theme('schedule_calendar_month_paginator', array(
+    'month' => $text,
+    'prevMonthLink' => $link['prevMonthLink'],
+    'nextMonthLink' => $link['nextMonthLink'],
+    'attributes' => array(
+      'id' => 'schedule-paginator'
+    ),
+  ));
+
+
+}
+
+function schedule_calendar_day_calendar() {
+  $months = schedule_calendar_montts_paginator();
+  $table = schedule_calendar_months_render_table_calendar();
+
+
+  return theme('schedule_calendar', array(
+    'paginator' => $months,
+    'table' => $table,
+  ));
+
+
+}
+
+function schedule_calendar_hour_calendar() {
+
+  $table = schedule_calendar_hour_render_table_calendar();
+  $paginator = schedule_calendar_hour_paginator();
+
+  return theme('schedule_calendar', array(
+    'paginator' => $paginator,
+    'table' => $table,
+  ));
+}
+
+function schedule_calendar_theme() {
+  return array(
+    'schedule_calendar' => array(
+      'variables' => array(
+        'paginator' => NULL,
+        'table' => NULL,
+      ),
+    ),
+    'schedule_calendar_paginator' => array(
+      'variables' => array(
+        'month' => NULL,
+        'nextDay' => NULL,
+        'prevDay' => NULL,
+        'prevDayLink' => NULL,
+        'prevMonthLink' => NULL,
+        'nextMonthLink' => NULL,
+        'nextDayLink' => NULL,
+      ),
+    ),
+    'schedule_calendar_month_paginator' => array(
+      'variables' => array(
+        'month' => NULL,
+        'prevMonthLink' => NULL,
+        'nextMonthLink' => NULL,
+      ),
+    ),
+  );
+}
+
+function theme_schedule_calendar($variables) {
+  $output = '<div id="schedule-calendar-wrapper">';
+  $output .= '<div id="schedule-calendar-pagination">';
+  $output .= $variables['paginator'];
+  $output .= '</div>';
+  $output .= '<div id="schedule-calendar-table">';
+  $output .= $variables['table'];
+  $output .= '</div>';
+  $output .= '</div>';
+  return $output;
+}
+
+function theme_schedule_calendar_paginator($variables) {
+  $output = '<span class="prev">';
+  $output .= $variables['prevDayLink'];
+  $output .= '</span>';
+  $output .= '<span>';
+  $output .= $variables['prevDay'];
+  $output .= '</span>';
+  $output .= '<span class="prev">';
+  $output .= $variables['prevMonthLink'];
+  $output .= '</span>';
+  $output .= '<span class="cur_pos">';
+  $output .= $variables['month'];
+  $output .= '</span>';
+  $output .= '<span class="next">';
+  $output .= $variables['nextMonthLink'];
+  $output .= '</span>';
+  $output .= $variables['nextDay'];
+  $output .= '<span>';
+  $output .= '</span>';
+  $output .= '<span class="next">';
+  $output .= $variables['nextDayLink'];
+  $output .= '</span>';
+
+  return $output;
+}
+
+function theme_schedule_calendar_month_paginator($variables) {
+
+  $output = '<span class="prev-month">';
+  $output .= $variables['prevMonthLink'];
+  $output .= '</span>';
+  $output .= '<span class="cur_pos">';
+  $output .= $variables['month'];
+  $output .= '</span>';
+  $output .= '<span class="next-month">';
+  $output .= $variables['nextMonthLink'];
+  $output .= '</span>';
+
+
+  return $output;
+}
+
+
+function _schedule_calendar_modal() {
+
+  static $added = FALSE;
+  if ($added == FALSE) {
+    $added = TRUE;
+
+    // Include the CTools tools that we need.
+    ctools_include('modal');
+    ctools_include('ajax');
+    ctools_modal_add_js();
+
+    $example_style = array(
+      'schedule-calendar-style' => array(
+        'modalSize' => array(
+          'type' => 'fixed',
+          'width' => 420,
+          'height' => 'auto',
+        ),
+        'modalOptions' => array(
+          'opacity' => (float) 0.3,
+          'background-color' => '#000000',
+        ),
+        'closeText' => '',
+        'loadingText' => '',
+        'animation' => 'fadeIn',
+        'animationSpeed' => 'fast',
+      ),
+    );
+
+    drupal_add_js($example_style, 'setting');
+  }
+}

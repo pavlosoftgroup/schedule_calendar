@@ -1,0 +1,12 @@
+name = Schedule Calendar
+description = A description of what your module does.
+core = 7.x
+
+files[] = schedule_calendar.module
+files[] = schedule_calendar.install
+files[] = includes/schedule_calendar.block.inc
+files[] = includes/schedule_calendar.func.inc
+files[] = css/schedule_calendar.css
+
+dependencies[] = entity
+dependencies[] = ctools
